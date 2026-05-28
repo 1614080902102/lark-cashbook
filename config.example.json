@@ -1,0 +1,17 @@
+{
+  "_comment": "复制本文件为 config.json 后填写。app_token 与 tables 可由 `node scripts/setup_bitable.js` 自动生成。",
+  "app_token": "<多维表格 app_token，setup_bitable.js 会输出>",
+  "url": "<多维表格链接，setup_bitable.js 会输出>",
+  "tables": {
+    "transactions": { "table_id": "<流水表 table_id>", "name": "流水" },
+    "budgets": { "table_id": "<预算表 table_id>", "name": "预算" }
+  },
+  "user_open_id": "<你的飞书 open_id，可用 scripts/list_chats.js 之外的联系人接口获取，或在开发者后台查看>",
+  "push_chat_id": "<接收报表/提醒的群 chat_id，用 scripts/list_chats.js 列出>",
+  "push_chat_name": "<群名，仅备注用>",
+  "categories": {
+    "expense": ["衣", "食", "住", "行", "医疗", "成长", "娱乐", "其他"],
+    "income": ["工资", "外快", "投资", "报销", "其他"]
+  },
+  "payment_methods": ["微信", "支付宝", "云闪付", "其他"]
+}
