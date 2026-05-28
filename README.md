@@ -37,7 +37,7 @@
 - macOS（定时任务用 launchd）
 - Node.js 18+（用到内置 `fetch`）
 - [`lark-cli`](https://github.com/larksuite/cli)，且其绑定的飞书自建应用已开通**多维表格读写** + **云文档**权限
-- [Claude Code](https://claude.com/claude-code) + lark-channel bridge（让飞书消息能触发 Claude Code 跑本仓库）
+- [Claude Code](https://claude.com/claude-code) + [feishu-claude-code-bridge](https://github.com/zarazhangrui/feishu-claude-code-bridge)（飞书 ↔ Claude Code 的桥接，让飞书消息能触发 Claude Code 跑本仓库；装好后用 `lark-channel-bridge` 命令管理）
 - 一个飞书机器人（bridge 用），并已被拉进你接收报表的群
 
 本仓库无 npm 依赖，纯 Node + lark-cli。
