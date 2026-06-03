@@ -13,7 +13,8 @@ const Q = require('./lib/query-core');
 const bot = require('./lib/feishu-bot');
 
 const CAT_EMOJI = {
-  衣: '👕', 食: '🍚', 住: '🏠', 行: '🚗', 医疗: '💊', 成长: '📚', 娱乐: '🎮', 其他: '📦',
+  衣: '👕', 食: '🍚', 住: '🏠', 行: '🚗', 医疗: '💊', 成长: '📚', 娱乐: '🎮',
+  人际交往: '🤝', 订阅: '📦', 其他: '📋', 总预算: '💰',
   工资: '💰', 外快: '🧧', 投资: '📈', 报销: '🧾', 未分类: '❓',
 };
 
@@ -62,7 +63,7 @@ function colorMoney(n, color) {
 function budgetRow(cat, spent, limit) {
   const ratio = limit > 0 ? spent / limit : 0;
   const left = Q.round2(limit - spent);
-  const flag = left < 0 ? "<font color='red'>超支</font>" : ratio >= 0.9 ? "<font color='orange'>临界</font>" : "<font color='green'>正常</font>";
+  const flag = left < 0 ? `<font color='red'>超支</font>` : ratio >= 0.9 ? `<font color='orange'>临界</font>` : `<font color='green'>正常</font>`;
   return `${CAT_EMOJI[cat] || '•'} **${cat}**　\`${bar(ratio)}\`　${yuan(spent)}/${yuan(limit)} · ${flag}`;
 }
 function budgetLines(budgets, monthStr, monthByCategory) {
@@ -71,7 +72,7 @@ function budgetLines(budgets, monthStr, monthByCategory) {
   const lines = [];
   if (b['总预算'] != null) {
     const totalSpent = Object.values(monthByCategory).reduce((s, v) => s + v, 0);
-    lines.push(budgetRow('总预算', Q.round2(totalSpent), b['总预算']).replace('📦', '💰'));
+    lines.push(budgetRow('总预算', Q.round2(totalSpent), b['总预算']));
   }
   for (const [cat, limit] of Object.entries(b)) {
     if (cat === '总预算') continue;
