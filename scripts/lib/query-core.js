@@ -103,6 +103,48 @@ function fetchBudgets(cfg = loadConfig()) {
   return out;
 }
 
+function fetchAllLoans(cfg = loadConfig()) {
+  const APP = cfg.app_token;
+  const L = cfg.tables.loans.table_id;
+  const all = [];
+  let pageToken;
+  do {
+    const params = { page_size: 500 };
+    if (pageToken) params.page_token = pageToken;
+    const data = larkCli('GET', `/open-apis/bitable/v1/apps/${APP}/tables/${L}/records`, { params });
+    for (const item of data.items || []) {
+      const f = item.fields || {};
+      all.push({
+        record_id: item.record_id,
+        counterparty: textOf(f['对方']),
+        direction: f['方向'] || '',
+        amount: Number(f['金额'] || 0),
+        date: f['日期'] ? msToDate(f['日期']) : '',
+        note: textOf(f['备注']),
+      });
+    }
+    pageToken = data.has_more ? data.page_token : null;
+  } while (pageToken);
+  return all;
+}
+
+// 借出/偿还为正方向（对方欠我增加），借入/收回为负方向。
+// 净额 > 0 表示对方还欠我，< 0 表示我还欠对方。
+function summarizeLoans(rows) {
+  const byPerson = {};
+  for (const r of rows) {
+    const p = r.counterparty || '未知';
+    if (!byPerson[p]) byPerson[p] = { net: 0, events: [] };
+    let sign = 0;
+    if (r.direction === '借出' || r.direction === '偿还') sign = 1;
+    else if (r.direction === '借入' || r.direction === '收回') sign = -1;
+    byPerson[p].net += sign * r.amount;
+    byPerson[p].events.push(r);
+  }
+  for (const p of Object.keys(byPerson)) byPerson[p].net = round2(byPerson[p].net);
+  return byPerson;
+}
+
 function filterRows(rows, cond = {}) {
   let { start, end, type, category, month } = cond;
   if (month) {
@@ -137,6 +179,31 @@ function summarize(rows) {
   };
 }
 
+// 计算指定月份各类别的预算状态。
+// 返回数组：[{ category, limit, used, remaining, pct, status }]，pct 为整数百分比，
+// status: 'safe'(<80) / 'warning'(80-100) / 'over'(>=100)。
+// 「总预算」对应该月所有支出之和。
+// 若 onlyCategory 传入，仅返回该类别（或总预算）。
+function computeBudgetStatus(cfg, monthStr, onlyCategory) {
+  const budgets = fetchBudgets(cfg);
+  const monthBudget = budgets[monthStr] || {};
+  if (Object.keys(monthBudget).length === 0) return [];
+  const rows = filterRows(fetchAllTransactions(cfg), { month: monthStr, type: '支出' });
+  const s = summarize(rows);
+  const out = [];
+  for (const [cat, limit] of Object.entries(monthBudget)) {
+    if (onlyCategory && cat !== onlyCategory) continue;
+    const used = cat === '总预算' ? s.expense : (s.byCategory[cat] || 0);
+    const remaining = round2(limit - used);
+    const pct = limit > 0 ? Math.round((used / limit) * 100) : 0;
+    let status = 'safe';
+    if (pct >= 100) status = 'over';
+    else if (pct >= 80) status = 'warning';
+    out.push({ category: cat, limit, used: round2(used), remaining, pct, status });
+  }
+  return out;
+}
+
 module.exports = {
   loadConfig,
   larkCli,
@@ -147,6 +214,9 @@ module.exports = {
   round2,
   fetchAllTransactions,
   fetchBudgets,
+  fetchAllLoans,
+  summarizeLoans,
+  computeBudgetStatus,
   filterRows,
   summarize,
 };

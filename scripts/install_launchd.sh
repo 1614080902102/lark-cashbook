@@ -7,6 +7,7 @@ set -euo pipefail
 
 PROJ_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 NODE_BIN="$(command -v node)"
+LAUNCHER="$PROJ_DIR/scripts/node-launcher.sh"
 LARK_DIR="$(dirname "$(command -v lark-cli)")"
 LA_DIR="$HOME/Library/LaunchAgents"
 LOG="$PROJ_DIR/logs/push.log"
@@ -29,7 +30,7 @@ make_job() {
   <key>Label</key><string>$label</string>
   <key>ProgramArguments</key>
   <array>
-    <string>$NODE_BIN</string>
+    <string>$LAUNCHER</string>
     <string>$PROJ_DIR/scripts/$script</string>
   </array>
   <key>WorkingDirectory</key><string>$PROJ_DIR</string>

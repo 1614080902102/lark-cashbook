@@ -23,7 +23,7 @@ node scripts/finance.js add '<json>'
 - `type`：`"支出"` 或 `"收入"`（必填）
 - `amount`：数字（必填，正数）
 - `category`：见下方分类（必填，归不进就用 `"其他"`）
-- `payment`：`"微信"`/`"支付宝"`/`"云闪付"`/`"其他"`（可选，拿不准就留空别瞎填）
+- `payment`：可选，拿不准就留空别瞎填。可选值见 `config.json` 的 `payment_methods`（当前：微信、支付宝、云闪付、招行信用卡、民生信用卡、信用卡、银行卡、现金、其他）。新增支付方式时改 `config.json` 并在飞书表「支付方式」单选字段里加同名选项。
 - `note`：备注（可选，填用户原话里的关键信息，如「午饭」「打车」）
 - `date`：`"YYYY-MM-DD"`（可选，缺省今天）
 
@@ -37,8 +37,10 @@ node scripts/finance.js add '<json>'
 - 住：房租、水电、物业、燃气、宽带、家居
 - 衣：衣服、鞋、裤子、包、化妆品、护肤
 - 医疗：看病、买药、挂号、体检、医院
-- 成长：课程、书、培训、学习、订阅、软件、会员、知识付费
+- 成长：课程、书、培训、学习、知识付费、**乐捐**（忘日报周报等自我提醒类罚款）（**只放学习类**，工具型订阅别塞这里）
 - 娱乐：电影、游戏、旅游、玩、演出、KTV、健身
+- 订阅：周期性付费工具/权益类——云闪付会员、还款券、视频/音乐/网盘会员、软件 SaaS、订阅制服务
+- 人际交往：给家人/朋友买东西、送礼、孝敬父母、人情红包等。**只要是给别人花的，就归这里，不按物品本身分类**（例如给妈妈买血糖仪算人际交往，不算医疗）
 - 其他：以上都不沾
 
 **分类**（收入）：工资、外快、投资、报销、其他。
@@ -76,6 +78,52 @@ node scripts/finance.js query '<json>'
 
 把用户问的时间范围换算好再查，用返回数字回答，可附表链接。
 
-## 预算（暂为手动）
+## 往来（借出/借入/收回/偿还）
 
-预算存在「预算」表（`config.json` 的 `tables.budgets`）。当前 Phase 1 未自动联动预警；用户问预算剩余时，读预算表对应月份/类别金额，减去 query 出的同类支出即可。
+借给/借自别人的钱**不进流水表**（否则会污染月度支出统计），单独走「往来」表（`config.json` 的 `tables.loans`）。
+
+**记一笔往来**：
+```
+node scripts/finance.js loan add '<json>'
+```
+字段：`counterparty`（对方，必填）、`direction`（必填，`借出`/`借入`/`收回`/`偿还`）、`amount`（必填，正数）、`date`（可选，缺省今天）、`note`（可选）。一次多笔传数组。
+
+方向语义：
+- 「借出」/「偿还」= 对方欠我余额 +
+- 「借入」/「收回」= 对方欠我余额 −
+
+**查余额**：
+```
+node scripts/finance.js loan balance              # 所有人
+node scripts/finance.js loan balance '{"counterparty":"小明"}'   # 看某人
+```
+返回 `balances`（按人汇总，含净额和事件数）、`outstanding`（净额≠0 的人）、`detail`（指定人时含事件列表）。
+
+净额正数 = 对方还欠我；负数 = 我还欠对方。
+
+## 预算
+
+预算存在「预算」表（`config.json` 的 `tables.budgets`），字段：`月份`(YYYY-MM) + `类别`(某类或「总预算」) + `预算金额`。
+
+### 用户问"还剩多少预算"
+```
+node scripts/finance.js budget '{"month":"YYYY-MM"}'              # 看整月所有设过预算的类别
+node scripts/finance.js budget '{"month":"YYYY-MM","category":"食"}'  # 看某类
+```
+返回 `statuses`：每条含 `limit`(预算) / `used`(已用) / `remaining`(剩余) / `pct`(用百分比) / `status`(safe/warning/over)。
+
+### 记账后回复带预算
+`add` 命令现在返回 `budgets` 数组，每条 `{month, category, limit, used, remaining, pct, status}`。**只要返回里有 budgets，就把它带进回复**——格式建议：
+
+> 📊 6月食 ¥420/¥1200 (35%) ✅
+> 📊 6月总预算 ¥1850/¥5000 (37%) ✅
+
+emoji 按 status 选：`safe`✅ / `warning`⚠️ / `over`🚨。
+
+### 预警阈值
+- `pct ≥ 80%`（warning）：回复时显眼提示"接近预算"
+- `pct ≥ 100%`（over）：标"已超支"，并显示超出多少
+- 用户设了「总预算」时，每次记账也带上总预算进度
+
+### 建议预算（设了才显示，不设不烦）
+用户没设的类别就别假装有；`budgets` 数组为空就跳过预算行。
