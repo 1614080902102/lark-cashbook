@@ -64,7 +64,9 @@ function budgetRow(cat, spent, limit) {
   const ratio = limit > 0 ? spent / limit : 0;
   const left = Q.round2(limit - spent);
   const flag = left < 0 ? `<font color='red'>超支</font>` : ratio >= 0.9 ? `<font color='orange'>临界</font>` : `<font color='green'>正常</font>`;
-  return `${CAT_EMOJI[cat] || '•'} **${cat}**　\`${bar(ratio)}\`　${yuan(spent)}/${yuan(limit)} · ${flag}`;
+  const barStr = bar(ratio);
+  const barMd = barStr ? `\`${barStr}\`　` : ''; // 0% 没有条，避免空行内代码渲染成裸反引号
+  return `${CAT_EMOJI[cat] || '•'} **${cat}**　${barMd}${yuan(spent)}/${yuan(limit)} · ${flag}`;
 }
 function budgetLines(budgets, monthStr, monthByCategory) {
   const b = budgets[monthStr];
@@ -78,25 +80,26 @@ function budgetLines(budgets, monthStr, monthByCategory) {
     if (cat === '总预算') continue;
     lines.push(budgetRow(cat, monthByCategory[cat] || 0, limit));
   }
-  return lines.length ? lines.join('\n') : null;
+  // 每行单独成元素：飞书单个 markdown 元素内容/样式段过多会整段降级为纯文本，
+  // 拆开后无论类别多少都不触顶。
+  return lines.length ? lines : null;
 }
 
 // 支出分类字符条形图：固定列（名/金额/占比）对齐，纯实心条放行尾参差，紧凑可控。
 function breakdownLines(byCategory, total) {
   const entries = Object.entries(byCategory).sort((a, b) => b[1] - a[1]);
-  if (!entries.length) return '_本期无支出_';
+  if (!entries.length) return ['_本期无支出_'];
   const maxName = Math.max(...entries.map(([c]) => c.length));
   const amtStrs = entries.map(([, v]) => yuan(v));
   const amtW = Math.max(...amtStrs.map((s) => s.length));
-  return entries
-    .map(([cat, amt], i) => {
-      const name = cat + '　'.repeat(maxName - cat.length);
-      const ratio = total > 0 ? amt / total : 0;
-      const pctS = `${Math.round(ratio * 100)}%`.padStart(4);
-      const amtS = amtStrs[i].padStart(amtW);
-      return `${CAT_EMOJI[cat] || '•'} \`${name} ${amtS} ${pctS} ${bar(ratio)}\``;
-    })
-    .join('\n');
+  // 每行单独成元素，理由同 budgetLines。
+  return entries.map(([cat, amt], i) => {
+    const name = cat + '　'.repeat(maxName - cat.length);
+    const ratio = total > 0 ? amt / total : 0;
+    const pctS = `${Math.round(ratio * 100)}%`.padStart(4);
+    const amtS = amtStrs[i].padStart(amtW);
+    return `${CAT_EMOJI[cat] || '•'} \`${name} ${amtS} ${pctS} ${bar(ratio)}\``;
+  });
 }
 
 function kpiColumn(label, valueMd) {
@@ -112,7 +115,7 @@ function kpiColumn(label, valueMd) {
   };
 }
 
-function buildCard(win, summary, monthStr, monthSummary, budgetText, url) {
+function buildCard(win, summary, monthStr, monthSummary, budgetRows, url) {
   const netColor = summary.net >= 0 ? 'green' : 'red';
   const elements = [];
 
@@ -137,15 +140,19 @@ function buildCard(win, summary, monthStr, monthSummary, budgetText, url) {
 
   elements.push({ tag: 'hr' });
 
-  // 支出分类（字符条形图，紧凑对齐）
+  // 支出分类（字符条形图，紧凑对齐）——每行单独成元素，避免单元素超量降级
   elements.push({ tag: 'markdown', content: `**🗂 支出分类**` });
-  elements.push({ tag: 'markdown', content: breakdownLines(summary.byCategory, summary.expense) });
+  for (const line of breakdownLines(summary.byCategory, summary.expense)) {
+    elements.push({ tag: 'markdown', content: line });
+  }
 
-  // 本月预算（设了才显示）
-  if (budgetText) {
+  // 本月预算（设了才显示）——每行单独成元素
+  if (budgetRows && budgetRows.length) {
     elements.push({ tag: 'hr' });
     elements.push({ tag: 'markdown', content: `**🎯 本月预算（${monthStr}）**` });
-    elements.push({ tag: 'markdown', content: budgetText });
+    for (const line of budgetRows) {
+      elements.push({ tag: 'markdown', content: line });
+    }
   }
 
   // 按钮
@@ -175,8 +182,9 @@ function buildCard(win, summary, monthStr, monthSummary, budgetText, url) {
   };
 }
 
-// 生成并推送某类型报告。colorOverride 仅用于配色对比测试。
-async function pushReport(type, baseStr = Q.todayStr(), colorOverride = null) {
+// 生成并推送某类型报告。colorOverride 仅用于配色对比测试；
+// targetOverride 仅用于把预览发到私聊等非默认目标。
+async function pushReport(type, baseStr = Q.todayStr(), colorOverride = null, targetOverride = null) {
   const cfg = Q.loadConfig();
   const win = periodWindow(type, baseStr);
   if (colorOverride) {
@@ -193,15 +201,15 @@ async function pushReport(type, baseStr = Q.todayStr(), colorOverride = null) {
   const monthSummary = Q.summarize(monthRows);
 
   const budgets = Q.fetchBudgets(cfg);
-  const budgetText = budgetLines(budgets, monthStr, monthSummary.byCategory);
+  const budgetRows = budgetLines(budgets, monthStr, monthSummary.byCategory);
 
-  const card = buildCard(win, summary, monthStr, monthSummary, budgetText, cfg.url);
-  const target = cfg.push_chat_id || cfg.user_open_id;
+  const card = buildCard(win, summary, monthStr, monthSummary, budgetRows, cfg.url);
+  const target = targetOverride || cfg.push_chat_id || cfg.user_open_id;
   await bot.sendCard(target, card);
   console.log(`[${new Date().toISOString()}] 已推送 ${type} (${win.start}~${win.end}) 共 ${summary.count} 笔`);
 }
 
-module.exports = { pushReport, periodWindow };
+module.exports = { pushReport, periodWindow, buildCard };
 
 if (require.main === module) {
   const type = process.argv[2];
